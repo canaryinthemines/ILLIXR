@@ -255,6 +255,7 @@ private:
 	time_type lastFrameTime;
 
 	GLuint eyeTextures[2];
+	GLuint eyeDepthTextures[2];
 	GLuint eyeTextureFBO;
 	GLuint eyeTextureDepthTarget;
 
@@ -325,7 +326,51 @@ private:
 		}
 	}
 
-	void createFBO(GLuint* texture_handle, GLuint* fbo, GLuint* depth_target){
+	int createSharedDepthbuffer(GLuint* texture_handle){
+
+		#ifdef USE_ALT_EYE_FORMAT
+
+		// Create the shared eye texture handle.
+		glGenTextures(1, texture_handle);
+		glBindTexture(GL_TEXTURE_2D, *texture_handle);
+
+		// Set the texture parameters for the texture that the FBO will be
+		// mapped into.
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, EYE_TEXTURE_WIDTH, EYE_TEXTURE_HEIGHT, 0, GL_RGB, GL_UNSIGNED_BYTE, 0);
+
+		glBindTexture(GL_TEXTURE_2D, 0); // unbind texture, will rebind later
+
+		#else
+		// Create the shared eye texture handle.
+		glGenTextures(1, texture_handle);
+		glBindTexture(GL_TEXTURE_2D_ARRAY, *texture_handle);
+
+		// Set the texture parameters for the texture that the FBO will be
+		// mapped into.
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAX_LEVEL, 0);
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+		glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_RGB8, EYE_TEXTURE_WIDTH, EYE_TEXTURE_HEIGHT, 2, 0, GL_RGB, GL_UNSIGNED_BYTE, 0);
+
+		glBindTexture(GL_TEXTURE_2D_ARRAY, 0); // unbind texture, will rebind later
+
+		#endif
+
+		if(glGetError()){
+			return 0;
+		} else {
+			return 1;
+		}
+	}
+
+	void createFBO(GLuint* texture_handle, GLuint* fbo, GLuint* depth_texture_handle, GLuint* depth_target){
 		// Create a framebuffer to draw some things to the eye texture
 		glGenFramebuffers(1, fbo);
 		// Bind the FBO as the active framebuffer.
@@ -349,6 +394,12 @@ private:
 		glFramebufferTextureLayer(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, *texture_handle, 0, 0);
     	glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
     	#endif
+
+		// Attach depth texture to depth attachment.
+		glBindTexture(GL_TEXTURE_2D, *depth_texture_handle);
+		glFramebufferTexture(GL_DRAW_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, *depth_texture_handle, 0);
+		glBindTexture(GL_TEXTURE_2D, 0);
+
 		// attach a renderbuffer to depth attachment point
     	glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, *depth_target);
 
@@ -382,15 +433,14 @@ public:
 		glEnable              ( GL_DEBUG_OUTPUT );
 		glDebugMessageCallback( MessageCallback, 0 );
 
-		// Create two shared eye textures.
-		// Note; each "eye texture" actually contains two eyes.
-		// The two eye textures here are actually for double-buffering
-		// the Switchboard connection.
 		createSharedEyebuffer(&(eyeTextures[0]));
 		createSharedEyebuffer(&(eyeTextures[1]));
 
+		createSharedEyebuffer(&(eyeDepthTextures[0]));
+		createSharedEyebuffer(&(eyeDepthTextures[1]));
+
 		// Initialize FBO and depth targets, attaching to the frame handle
-		createFBO(&(eyeTextures[0]), &eyeTextureFBO, &eyeTextureDepthTarget);
+		createFBO(&(eyeTextures[0]), &eyeTextureFBO, &(eyeDepthTextures[0]) &eyeTextureDepthTarget);
 
 		// Create and bind global VAO object
 		glGenVertexArrays(1, &demo_vao);
